@@ -52,10 +52,11 @@ echo "==> [2/2] Транскрибация (${THREADS} потоков)..."
   -otxt \
   -t "$THREADS" \
   --language ru \
+  --prompt "Транскрипция доклада и лекции." \
   --max-context 0 \
-  --entropy-thold 2.6 \
-  --logprob-thold -1.0 \
-  --no-speech-thold 0.6 \
+  --entropy-thold 2.4 \
+  --logprob-thold -0.8 \
+  --no-speech-thold 0.7 \
   --suppress-nst \
   --flash-attn
 
