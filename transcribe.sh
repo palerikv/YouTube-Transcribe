@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- Конфигурация по умолчанию ---
 MODEL_PATH="${WHISPER_MODEL:-ggml-large-v3.bin}"
 WHISPER_BIN="${WHISPER_BIN:-/opt/homebrew/bin/whisper-cli}"
 URL="${1:-}"
 OUTPUT_NAME="${2:-lecture}"
 
-# Автоматическое определение потоков
 if [[ "$OSTYPE" == "darwin"* ]]; then
   THREADS=$(sysctl -n hw.logicalcpu)
 else
   THREADS=$(nproc 2>/dev/null || echo 4)
 fi
 
-# Проверка входных аргументов
 if [ -z "$URL" ]; then
-  echo "Использование: $0 <URL_YOUTUBE> [имя_файла]"
+  echo "Использование: $0 \"<URL_YOUTUBE>\" [имя_файла]"
   exit 1
 fi
 
-# Проверка наличия зависимостей
 for cmd in yt-dlp ffmpeg "$WHISPER_BIN"; do
   if ! command -v "$cmd" &>/dev/null && [ ! -x "$cmd" ]; then
     echo "Ошибка: утилита '$cmd' не найдена в системе."
@@ -34,14 +30,35 @@ if [ ! -f "$MODEL_PATH" ]; then
   exit 1
 fi
 
-# Создание временной рабочей директории
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 AUDIO_TMP="${TMP_DIR}/audio.wav"
 TRANSCRIPT_TMP="${TMP_DIR}/output"
 
-# 1. Загрузка и подготовка звука
 echo "==> [1/2] Загрузка и конвертация аудио (16kHz Mono PCM)..."
 yt-dlp -4 \
-  --extractor-args
+  --extractor-args "youtube:player_client=android" \
+  -x --audio-format wav \
+  --postprocessor-args "ExtractAudio:-ar 16000 -ac 1 -c:a pcm_s16le" \
+  "$URL" \
+  -o "$AUDIO_TMP"
+
+echo "==> [2/2] Транскрибация (${THREADS} потоков)..."
+"$WHISPER_BIN" \
+  -m "$MODEL_PATH" \
+  -f "$AUDIO_TMP" \
+  -of "$TRANSCRIPT_TMP" \
+  -otxt \
+  -t "$THREADS" \
+  --language ru \
+  --max-context 0 \
+  --entropy-thold 2.6 \
+  --logprob-thold -1.0 \
+  --no-speech-thold 0.6 \
+  --suppress-nst \
+  --flash-attn
+
+mv "${TRANSCRIPT_TMP}.txt" "${OUTPUT_NAME}.txt"
+
+echo "==> Готово! Результат сохранен в ${OUTPUT_NAME}.txt"
